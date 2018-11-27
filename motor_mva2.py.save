@@ -1,0 +1,137 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+#########################################
+# program do obslugi silnika krokowego 
+#
+# 2016.01.11 v.1.2
+# zajaczkowski@mpip-mainz.mpg.de
+#
+#########################################
+
+import time
+import serial
+import getopt
+import sys
+import math
+import motor
+import glob
+from ConfigParser import SafeConfigParser
+
+def get_param(mot):
+	if mot == '1':
+		name = 'Motor_1'
+		file = '/home/mar345/log/motor6.cfg'
+	elif mot == '2':
+		name = 'Motor_2'
+		file = '/home/mar345/log/motor3.cfg'
+	elif mot == '3':
+		name = 'Motor_3'
+		file = '/home/mar345/log/motor2.cfg'
+	elif mot == '4':
+		name = 'Motor_4'
+		file = '/home/mar345/log/motor2.cfg'
+	elif mot == '5':
+		name = 'Motor_5'
+		file = '/home/mar345/log/motor2.cfg'
+	elif mot == '6':
+		name = 'Motor_6'
+		file = '/home/mar345/log/motor2.cfg'
+	elif mot == '7':
+		name = 'Motor_7'
+		file = '/home/mar345/log/motor7.cfg'
+	else:
+		print ":: ERROR"
+		exit()
+
+	parser = SafeConfigParser()
+	parser.read(file)	
+	print parser.get(name, 'namechmo	')
+
+
+
+
+def set_position(ser, mot, step):
+
+	if float(step) > 0:
+		directions = 1.0 
+	else:
+		directions = -1.0
+
+	if mot == '6':
+		errors = 596
+		ratio = 12500
+		unitt = 'deg'
+		file = open('/home/mar345/log/motor6.txt', 'r+')
+
+	elif mot == '3':
+		errors = -20
+		ratio = -20000
+		unitt = 'mm'
+		file = open('/home/mar345/log/motor3.txt', 'r+')
+
+	elif mot == '2':
+		errors = 20
+		ratio = 400
+		unitt = 'mm'
+		file = open('/home/mar345/log/motor2.txt', 'r+')
+
+	else:
+		print ":: ERROR"
+		exit()
+
+	# czytamy aktualna pozycje silnika	
+	#floatstep=float(step)
+
+	mot_old_pos = float(file.read())
+	mot_new_pos = float(step)
+
+#	mot_todo    = mot_old_pos + mot_new_pos
+	mot_todo    = mot_new_pos - mot_old_pos
+
+	print "MOTOR: [",mot,"] OLD POSITION: ",mot_old_pos,"[",unitt,"] MOVE TO: ", mot_new_pos, "[",unitt,"] :: TO DO: ",mot_todo," :: ",int(float(step)*ratio)
+
+	done_errpl = move_motor(ser,mot,(   directions*int(errors)*0.5) )
+	done_steps = move_motor(ser,mot,int(mot_todo*ratio)          )
+	done_errmi = move_motor(ser,mot,(-1*directions*int(errors)*0.5) )
+
+	mot_new_done=mot_old_pos+(float(done_steps)/float(ratio))
+	
+	print "MOTOR: [",mot,"] NEW POSITION: ",mot_new_done,"[",unitt,"] DONE: ",done_steps/float(ratio),"[",unitt,"] :: e:",(done_errmi+done_errpl)
+
+	print done_steps
+	
+	file.seek(0)
+	file.write("          ")
+	file.seek(0)
+	file.write(str(mot_new_done))
+	file.close()
+	return "ok"
+	
+
+#--------------------------------------------------#
+#-------- Here the actual program starts ----------#
+#--------------------------------------------------#
+
+if len(sys.argv) != 3 :
+	print "::"
+	print ":: ERROR "
+	print ":: Please double check command "
+	print ":: motor_mv [motor] [absolut position]"
+	print "::"
+	sys.exit()
+else:
+	stepss = sys.argv[2]
+	motor  = sys.argv[1]
+
+#	set_position(motor,stepss)
+	get_param(motor)
+	
+
+	text_file = open("/home/mar345/log/silnik.log", "a")
+	txt=time.strftime("%Y:%m:%d-%H:%M:%S")+" :: MOTOR: "+str(motor)+" :: STEPS: "+str(stepss)+'\r\n'
+	text_file.write(txt)
+	text_file.close()
+	sys.exit()
+
+#--------------------------------------------------#

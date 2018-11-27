@@ -1,0 +1,230 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+#########################################
+# program do obslugi silnika krokowego 
+#
+# 2016.01.11 v.1.2
+# zajaczkowski@mpip-mainz.mpg.de
+#
+#########################################
+
+import time
+import serial
+import getopt
+import sys
+import math
+
+def init_controler():
+  ser = serial.Serial(
+	port='/dev/ttyUSB2',
+	baudrate=9600,
+	parity=serial.PARITY_NONE,
+	stopbits=serial.STOPBITS_TWO,
+	bytesize=serial.EIGHTBITS,
+	timeout=10,
+	xonxoff=0,
+	rtscts=0)
+
+#  ser.open() # we dont need this anymore in new version of python library 
+  ser.isOpen()
+  ser.flushOutput()
+  ser.flushInput()
+  return ser
+
+
+def close_controler(ser):
+	write_slowly(ser, "\x1B", delay=0.3)
+	ser.close()
+
+def write_slowly(ser, cmdstring, delay=0):
+  for i in cmdstring:
+	time.sleep(delay)
+        ser.write(i)
+
+def read_slowly(ser, delay=0):
+	line = ''
+	lines= ''
+	ss = 0
+	while line!="P1":
+		for c in ser.read():
+			if c == '\n':
+				lines=line
+				line = ''
+				if lines != '\r':
+					if lines[:1] != "?":
+						ss += int(lines)
+				break
+			else:
+				line += c
+			break
+
+	return(int(ss))
+
+
+def move_motor(ser,motor,steps):
+	cmd="\x1B"+str(motor)+'X'+str(steps)+'\r\n'
+	write_slowly(ser, cmd, delay=0.2)
+	return  read_slowly(ser, 0.1)
+	#return steps
+	
+def set_position(ser, mot, step):
+
+	if float(step) > 0:
+		directions = 1.0 
+	else:
+		directions = -1.0
+
+	if mot == '6':
+		errors = 596
+		ratio = 12500
+		unitt = 'deg'
+		file = open('/home/mar345/log/motor6.txt', 'r+')
+
+	elif mot == '3':
+		errors = -20
+		ratio = -20000
+		unitt = 'mm'
+		file = open('/home/mar345/log/motor3.txt', 'r+')
+
+	elif mot == '2':
+		errors = 20
+		ratio = 400
+		unitt = 'mm'
+		file = open('/home/mar345/log/motor2.txt', 'r+')
+
+	else:
+		print ":: ERROR"
+		exit()
+
+# czytamy aktualna pozycje silnika	
+	mot_old_pos = float(file.read())
+
+## przesuniecie bezwzgledne
+#	mot_new_pos = float(step)
+#	mot_todo    = mot_old_pos + mot_new_pos
+
+## przesuniecie wzgledne ostaniej pozycji 
+	mot_new_pos = mot_old_pos + float(step)
+	mot_todo    = float(step)
+
+
+	print "MOTOR: [",mot,"] OLD POSITION: ",mot_old_pos,"[",unitt,"] MOVE TO: ", mot_new_pos, "[",unitt,"] :: TO DO: ",mot_todo," :: ",int(float(step)*ratio)
+
+	done_errpl = move_motor(ser,mot,(   directions*int(errors)*0.5) )
+	done_steps = move_motor(ser,mot,int(mot_todo*ratio)          )
+	done_errmi = move_motor(ser,mot,(-1*directions*int(errors)*0.5) )
+
+	mot_new_done=mot_old_pos+(float(done_steps)/float(ratio))
+	
+	print "MOTOR: [",mot,"] NEW POSITION: ",mot_new_done,"[",unitt,"] DONE: ",done_steps/float(ratio),"[",unitt,"] :: e:",(done_errmi+done_errpl)
+
+	print done_steps
+	
+	file.seek(0)
+	file.write("          ")
+	file.seek(0)
+	file.write(str(mot_new_done))
+	file.close()
+	return "ok"
+	
+def set_zero_m1(ser):
+	print "MOTOR 1 GO ON ZERO"	
+	move_motor(ser, "1", 50000)
+	b=move_motor(ser, "1", -5828)
+	
+	if b != -5828:
+		print ":: error"
+	return "ok"
+
+def get_pos(mot):
+	pos='NOT AVAIABLE'
+
+
+#	if mot == '1':
+#		file = open('/home/mar345/log/motor1.txt', 'r+')
+#		pos = file.read()
+#		file.close()
+	if mot == '2':
+		file = open('/home/mar345/log/motor2.txt', 'r+')
+		pos = file.read()
+		file.close()
+	if mot == '3':
+		file = open('/home/mar345/log/motor3.txt', 'r+')
+		pos = file.read()
+		file.close()
+#	if mot == '4':
+#		file = open('/home/mar345/log/motor4.txt', 'r+')
+#		pos = file.read()
+#		file.close()
+#	if mot == '5':
+#		file = open('/home/mar345/log/motor5.txt', 'r+')
+#		pos = file.read()
+#		file.close()
+	if mot == '6':
+		file = open('/home/mar345/log/motor6.txt', 'r+')
+		pos = file.read()
+		file.close()
+#	if mot == '7':
+#		file = open('/home/mar345/log/motor7.txt', 'r+')
+#		pos = file.read()
+#		file.close()
+
+	return pos
+
+def save_log():
+	text_file = open("/home/mar345/log/silnik.log", "a")
+	txt=time.strftime("%Y:%m:%d-%H:%M:%S")+" :: MOTOR: "+str(motor)+" :: STEPS: "+str(stepss)+'\r\n'
+	text_file.write(txt)
+	text_file.close()
+
+def rr():
+	print " "
+	print "------------------ "
+	print " Motor \t position "
+	print " 1     \t " +get_pos("1")
+	print " 2     \t " +get_pos("2")
+	print " 3     \t " +get_pos("3")
+	print " 4     \t " +get_pos("4")
+	print " 5     \t " +get_pos("2")
+	print " 6     \t " +get_pos("6")
+	print " 7     \t " +get_pos("7")
+	print "------------------ "
+	print " "
+
+	file = open('/home/mar345/log/motor6.txt', 'r+')
+	
+
+#--------------------------------------------------#
+#-------- Here the actual program starts ----------#
+#--------------------------------------------------#
+
+delay=0.3
+delta = 1.0 # provide a reasonable default value...
+
+
+if len(sys.argv) != 3 :
+	print "::"
+	print ":: ERROR "
+	print ":: Please double check command "
+	print ":: motor_mv [motor] [relative position]"
+	print "::"
+	rr()
+	sys.exit()
+else:
+	ser=init_controler()
+
+	stepss = sys.argv[2]
+	motor  = sys.argv[1]
+
+	set_position(ser,motor,stepss)
+
+	close_controler(ser)
+
+	text_file = open("/home/mar345/log/silnik.log", "a")
+	txt=time.strftime("%Y:%m:%d-%H:%M:%S")+" :: MOTOR: "+str(motor)+" :: STEPS: "+str(stepss)+'\r\n'
+	text_file.write(txt)
+	text_file.close()
+	sys.exit()
+
+#--------------------------------------------------#
